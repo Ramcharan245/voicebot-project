@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Talk to Ramcharan – AI Voice Bot</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f6f7fb;--card:#fff;--text:#1b1e2b;--muted:#5d6377;--accent:#4f46e5;--accent2:#e0e7ff;--border:#dfe2ee;--bot:#eef0ff}
+@media (prefers-color-scheme:dark){:root{--bg:#12141c;--card:#1b1e2b;--text:#eef0f8;--muted:#a1a7bd;--accent:#818cf8;--accent2:#2a2e4a;--border:#2c3047;--bot:#242844}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.5}
+main{max-width:680px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:1.45rem;margin:8px 0 2px}
+.sub{color:var(--muted);margin:0 0 16px;font-size:.95rem}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px}
+#log{min-height:160px;max-height:46vh;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+.m{padding:10px 14px;border-radius:14px;max-width:88%;white-space:pre-wrap}
+.u{align-self:flex-end;background:var(--accent);color:#fff}
+.b{align-self:flex-start;background:var(--bot)}
+.hint{color:var(--muted);text-align:center;margin:auto}
+#mic{display:block;margin:18px auto 6px;width:88px;height:88px;border-radius:50%;border:0;background:var(--accent);color:#fff;font-size:36px;cursor:pointer}
+#mic.on{background:#dc2626;animation:p 1.2s infinite}
+@keyframes p{50%{box-shadow:0 0 0 14px rgba(220,38,38,.18)}}
+#status{text-align:center;color:var(--muted);font-size:.92rem;min-height:1.4em}
+.row{display:flex;gap:8px;margin-top:12px}
+input[type=text]{flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:1rem;min-width:0}
+button.s{padding:0 18px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-size:1rem;cursor:pointer}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.chip{border:1px solid var(--border);background:var(--accent2);color:var(--text);padding:7px 12px;border-radius:999px;font-size:.85rem;cursor:pointer}
+label{font-size:.85rem;color:var(--muted);display:flex;gap:6px;align-items:center;margin-top:12px}
+</style>
+</head>
+<body>
+<main>
+<h1>Hi, I’m Ramcharan 👋</h1>
+<p class="sub">Generative AI Engineer. Tap the mic and ask me anything, or pick a question below. I’ll answer out loud.</p>
+<div class="card">
+<div id="log"><p class="hint">Your conversation will appear here.</p></div>
+<button id="mic" aria-label="Start or stop speaking">🎤</button>
+<div id="status">Tap the mic to speak</div>
+<div class="row"><input type="text" id="txt" placeholder="…or type a question" autocomplete="off"><button class="s" id="send">Ask</button></div>
+<div class="chips" id="chips"></div>
+<label><input type="checkbox" id="voice" checked> Read answers aloud</label>
+</div>
+</main>
+<script>
+const QS=["What should we know about your life story in a few sentences?","What’s your #1 superpower?","What are the top 3 areas you’d like to grow in?","What misconception do your coworkers have about you?","How do you push your boundaries and limits?","Why do you want to join 100x?"];
+const $=id=>document.getElementById(id);
+const log=$("log"),statusEl=$("status"),mic=$("mic");
+let history=[],busy=false,rec=null,listening=false,finalText="";
+QS.forEach(q=>{const b=document.createElement("button");b.className="chip";b.textContent=q;b.onclick=()=>ask(q);$("chips").appendChild(b);});
+
+function add(cls,text){const h=log.querySelector(".hint");if(h)h.remove();const d=document.createElement("div");d.className="m "+cls;d.textContent=text;log.appendChild(d);log.scrollTop=log.scrollHeight;return d;}
+function speak(t){try{if(!$("voice").checked||!window.speechSynthesis)return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang="en-IN";speechSynthesis.speak(u);}catch(e){}}
+
+async function ask(q){
+  q=(q||"").trim();if(!q||busy)return;
+  busy=true;$("txt").value="";add("u",q);const bub=add("b","Thinking…");statusEl.textContent="Thinking…";
+  let ans="";
+  try{
+    const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:history.concat([{role:"user",content:q}])})});
+    const j=await r.json();ans=(j.reply||"").trim();
+  }catch(e){}
+  if(!ans)ans="Sorry, I had a connection hiccup. Could you ask that again?";
+  else{history.push({role:"user",content:q},{role:"assistant",content:ans});history=history.slice(-10);}
+  bub.textContent=ans;log.scrollTop=log.scrollHeight;speak(ans);
+  busy=false;statusEl.textContent="Tap the mic to speak";
+}
+
+function setL(v){listening=v;mic.classList.toggle("on",v);statusEl.textContent=v?"Listening… speak now":"Tap the mic to speak";}
+mic.onclick=()=>{
+  if(listening){try{rec.stop();}catch(e){}return;}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){statusEl.textContent="Voice input isn’t supported in this browser. Please use Chrome or Edge, or type below.";return;}
+  if(window.speechSynthesis)speechSynthesis.cancel();
+  finalText="";rec=new SR();rec.lang="en-IN";rec.interimResults=false;rec.continuous=false;
+  rec.onresult=e=>{finalText=Array.from(e.results).map(r=>r[0].transcript).join(" ");};
+  rec.onerror=ev=>{setL(false);statusEl.textContent=ev.error==="not-allowed"?"Mic blocked. Please allow microphone access, or type below.":"Couldn’t hear that. Try again or type below.";};
+  rec.onend=()=>{const t=finalText;setL(false);finalText="";if(t.trim())ask(t);};
+  try{rec.start();setL(true);}catch(e){setL(false);}
+};
+$("send").onclick=()=>ask($("txt").value);
+$("txt").addEventListener("keydown",e=>{if(e.key==="Enter")ask($("txt").value);});
+</script>
+</body>
+</html>
